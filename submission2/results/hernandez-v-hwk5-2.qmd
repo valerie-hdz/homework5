@@ -70,8 +70,7 @@ q1_table = (
 Medicaid in 2014 versus states that never expanded. Does the graph suggest a 
 potential treatment effect?**
 
-The graph suggests a clear treatment effect. Prior to 2014 both groups were trending 
-similarly, but after expansion the 2014 expanders saw a sharp decline in uncompensated 
+The graph suggests a clear treatment effect. Prior to 2014 both groups were trending similarly, but after expansion the 2014 expanders saw a sharp decline in uncompensated 
 care while never-expanders continued to rise. This is consistent with 
 Medicaid expansion reducing the volume of uninsured patients hospitals treat without 
 payment.
@@ -134,7 +133,7 @@ q3_table = q3_table.rename(columns={'group': 'Group'})
 
 **Briefly discuss what policies or events might explain the trends you observe. 
 Why might we expect Medicaid expansion to affect uncompensated care?**
-Uncompensated care declined for both expanding and non-expanding states over the 2011–2018 period, but the decline was notably sharper for states that expanded Medicaid in 2014, which suggests there are potential treatment effect. This pattern is consistent with the economic logic of Medicaid expansion which is that prior to expansion, low-income uninsured patients who received hospital care generated uncompensated costs that hospitals could not recover. However, by extending Medicaid coverage to adults up to 138% of the federal poverty level, expansion converted many previously uninsured patients into Medicaid-covered patients. This directly reduced the volume of care hospitals had to absorb without payment. The downward trend observed even in non-expanding states is likely explained by the ACA's individual mandate, also implemented in 2014 as well as the broader economic recovery following the 2008 recession, both of which reduced uninsured rates nationally regardless of expansion status.
+Uncompensated care declined for both expanding and non-expanding states over the 2011–2018 period, but the decline was notably sharper for states that expanded Medicaid in 2014, which suggests there are potential treatment effect. This pattern is consistent with the logic of Medicaid expansion which is that prior to expansion, low-income uninsured patients who received hospital care generated uncompensated costs that hospitals could not recover. However, by extending Medicaid coverage to adults up to 138% of the federal poverty level, expansion converted many previously uninsured patients into Medicaid-covered patients. This directly reduced the volume of care hospitals had to absorb without payment. The downward trend observed even in non-expanding states is likely explained by the ACA's individual mandate, also implemented in 2014 as well as the broader economic recovery following the 2008 recession, both of which reduced uninsured rates nationally regardless of expansion status.
 
 # Part 2: Estimate ATEs
 ## Question 5
@@ -203,8 +202,7 @@ dd_results = pd.concat([dd_results, stats_rows], ignore_index=True)
 **Include hospital and year fixed effects in your estimates. Cluster your standard 
 errors at the state level. How do your results compare to those in question 5?**
 
-The TWFE estimate is slightly larger in magnitude than the standard DD estimate from question 5. Adding hospital and year fixed effects absorbs 
-time-invariant hospital characteristics and common year trends, producing a cleaner estimate of the treatment effect.
+The TWFE estimate is slightly larger in magnitude than the standard DD estimate from question 5. Adding hospital and year fixed effects absorbs time-invariant hospital characteristics and common year trends, producing a cleaner estimate of the treatment effect.
 ```{python}
 reg_dat_fe = reg_dat.dropna(subset=['uncomp_care_m']).copy()
 reg_dat_fe['provider_number'] = reg_dat_fe['provider_number'].astype(str)
@@ -221,46 +219,37 @@ twfe_res = twfe.fit(
     clusters=reg_dat_fe.set_index(['provider_number', 'year'])['state']
 )
 
-# Side-by-side comparison table
 combined_table = pd.DataFrame({
-    'Specification': ['Standard DD', 'TWFE'],
-    'Treat Coefficient': [
-        dd_reg.params.get('treat', np.nan),
-        twfe_res.params['treat']
-    ],
-    'Std Error': [
-        dd_reg.bse.get('treat', np.nan),
-        twfe_res.std_errors['treat']
-    ],
-    'p-value': [
-        dd_reg.pvalues.get('treat', np.nan),
-        twfe_res.pvalues['treat']
-    ],
-    'R-squared': [
-        round(dd_reg.rsquared, 3),
-        round(twfe_res.rsquared_within, 3)
-    ],
-    'Observations': [
+    'Variable': ['Intercept', 'Post 2014', 'Expand', 'Post x Expand',
+                 'Hospital FE', 'Year FE', 'Observations', 'R-squared'],
+    'Standard DD': [
+        round(dd_reg.params['Intercept'], 3),
+        round(dd_reg.params['post'], 3),
+        round(dd_reg.params['expand_ever'], 3),
+        round(dd_reg.params['treat'], 3),
+        'No', 'No',
         int(dd_reg.nobs),
-        int(twfe_res.nobs)
+        round(dd_reg.rsquared, 3)
     ],
-    'Hospital FE': ['No', 'Yes'],
-    'Year FE': ['No', 'Yes']
+    'TWFE': [
+        '',
+        '',
+        '',
+        round(twfe_res.params['treat'], 3),
+        'Yes', 'Yes',
+        int(twfe_res.nobs),
+        round(twfe_res.rsquared_within, 3)
+    ]
 })
 
 (combined_table.style
-    .format({
-        'Treat Coefficient': '{:.4f}',
-        'Std Error': '{:.4f}',
-        'p-value': '{:.4f}',
-        'R-squared': '{:.3f}',
-        'Observations': '{:,}'
-    })
-    .set_caption('Table 4: Standard DD vs TWFE — Hospital & Year Fixed Effects, State-Clustered SEs')
+    .set_caption('Table 4: Standard DD vs TWFE — 2014 Expanders vs Never-Expanders')
     .set_table_styles([
         {'selector': 'caption', 'props': [('font-size', '14px'), ('font-weight', 'bold')]},
         {'selector': 'th', 'props': [('background-color', '#4472C4'), ('color', 'white'), ('font-weight', 'bold')]},
         {'selector': 'tr:nth-child(even)', 'props': [('background-color', '#D9E1F2')]},
+        {'selector': 'tr:last-child', 'props': [('background-color', '#D9E1F2'), ('font-weight', 'bold')]},
+        {'selector': 'tr:nth-last-child(2)', 'props': [('background-color', '#D9E1F2'), ('font-weight', 'bold')]},
     ])
     .hide(axis='index')
 )
@@ -271,21 +260,26 @@ combined_table = pd.DataFrame({
 different? If so, why?**
 
 Including all states produces a smaller estimate of -$23M compared to -$29.6M in 
-question 6. This attenuation is expected — states that expanded after 2014 are 
-partially treated during the post period, which contaminates the control group and 
-pulls the estimate toward zero.
+question 6. This is expected because states that expanded after 2014 are partially treated during the post period, which affects the control group and pulls the estimate toward zero.
 ```{python}
 reg_dat_all = hcris[~hcris['expand_ever'].isna()].copy()
 reg_dat_all['post'] = (reg_dat_all['year'] >= 2014).astype(int)
-reg_dat_all['expand_ever'] = reg_dat_all['expand_ever'].astype(bool)
+reg_dat_all['expand_ever'] = reg_dat_all['expand_ever'].astype(int)
 reg_dat_all['treat'] = (
-    reg_dat_all['expand_ever'] &
+    reg_dat_all['expand_ever'].astype(bool) &
     (reg_dat_all['year'] >= reg_dat_all['expand_year'].fillna(9999))
 ).astype(int)
-reg_dat_all = reg_dat_all.dropna(subset=['uncomp_care_m']).copy()
-reg_dat_all['provider_number'] = reg_dat_all['provider_number'].astype(str)
 
-panel_all = reg_dat_all.set_index(['provider_number', 'year'])
+dd_all = smf.ols(
+    'uncomp_care_m ~ post + expand_ever + treat',
+    data=reg_dat_all
+).fit()
+
+# TWFE - all states
+reg_dat_all_fe = reg_dat_all.dropna(subset=['uncomp_care_m']).copy()
+reg_dat_all_fe['provider_number'] = reg_dat_all_fe['provider_number'].astype(str)
+
+panel_all = reg_dat_all_fe.set_index(['provider_number', 'year'])
 y_all = panel_all['uncomp_care_m']
 X_all = panel_all[['treat']]
 
@@ -294,34 +288,76 @@ twfe_all_res = twfe_all.fit(
     cov_type='clustered',
     cluster_entity=False,
     cluster_time=False,
-    clusters=reg_dat_all.set_index(['provider_number', 'year'])['state']
+    clusters=reg_dat_all_fe.set_index(['provider_number', 'year'])['state']
 )
 
-twfe_all_table = pd.DataFrame({
-    'Coefficient': twfe_all_res.params,
-    'Std Error': twfe_all_res.std_errors,
-    't-stat': twfe_all_res.tstats,
-    'p-value': twfe_all_res.pvalues,
-    '95% CI Lower': twfe_all_res.conf_int()['lower'],
-    '95% CI Upper': twfe_all_res.conf_int()['upper']
-}).reset_index().rename(columns={'index': 'Variable'})
+# Staggered treatment 
+reg_dat_stag = hcris[~hcris['expand_ever'].isna()].dropna(subset=['uncomp_care_m']).copy()
+reg_dat_stag['expand_ever'] = reg_dat_stag['expand_ever'].astype(bool)
+reg_dat_stag['time_to_treat'] = np.where(
+    reg_dat_stag['expand_ever'],
+    reg_dat_stag['year'] - reg_dat_stag['expand_year'],
+    0
+).astype(float).clip(-3, 4).astype(int)
+reg_dat_stag['provider_number'] = reg_dat_stag['provider_number'].astype(str)
+reg_dat_stag = reg_dat_stag[reg_dat_stag['time_to_treat'] != -1].copy()
 
-(twfe_all_table.style
-    .format({
-        'Coefficient': '{:.4f}',
-        'Std Error': '{:.4f}',
-        't-stat': '{:.3f}',
-        'p-value': '{:.4f}',
-        '95% CI Lower': '{:.4f}',
-        '95% CI Upper': '{:.4f}'
-    })
-    .set_caption('Table 5: TWFE DD — All States, Hospital & Year Fixed Effects, State-Clustered SEs')
+panel_stag = reg_dat_stag.set_index(['provider_number', 'year'])
+y_stag = panel_stag['uncomp_care_m']
+
+# Use treat variable for staggered TWFE
+reg_dat_stag['treat'] = (
+    reg_dat_stag['expand_ever'] &
+    (reg_dat_stag['year'] >= reg_dat_stag['expand_year'].fillna(9999))
+).astype(int)
+panel_stag = reg_dat_stag.set_index(['provider_number', 'year'])
+X_stag = panel_stag[['treat']]
+
+twfe_stag = PanelOLS(y_stag, X_stag, entity_effects=True, time_effects=True)
+twfe_stag_res = twfe_stag.fit(
+    cov_type='clustered',
+    cluster_entity=False,
+    cluster_time=False,
+    clusters=reg_dat_stag.set_index(['provider_number', 'year'])['state']
+)
+
+table7 = pd.DataFrame({
+    'Variable': ['Intercept', 'Post 2014', 'Expand', 'Post x Expand',
+                 'Hospital FE', 'Year FE', 'Observations', 'R-squared'],
+    'Standard DD': [
+        round(dd_all.params['Intercept'], 3),
+        round(dd_all.params['post'], 3),
+        round(dd_all.params['expand_ever'], 3),
+        round(dd_all.params['treat'], 3),
+        'No', 'No',
+        int(dd_all.nobs),
+        round(dd_all.rsquared, 3)
+    ],
+    'TWFE': [
+        '', '', '',
+        round(twfe_all_res.params['treat'], 3),
+        'Yes', 'Yes',
+        int(twfe_all_res.nobs),
+        round(twfe_all_res.rsquared_within, 3)
+    ],
+    'Staggered Treatment': [
+        '', '', '',
+        round(twfe_stag_res.params['treat'], 3),
+        'Yes', 'Yes',
+        int(twfe_stag_res.nobs),
+        round(twfe_stag_res.rsquared_within, 3)
+    ]
+})
+
+(table7.style
+    .set_caption('Table 5: All States — Standard DD, TWFE, and Staggered Treatment')
     .set_table_styles([
         {'selector': 'caption', 'props': [('font-size', '14px'), ('font-weight', 'bold')]},
         {'selector': 'th', 'props': [('background-color', '#4472C4'), ('color', 'white'), ('font-weight', 'bold')]},
+        {'selector': 'tr:nth-child(even)', 'props': [('background-color', '#D9E1F2')]},
+        {'selector': 'tr:last-child', 'props': [('background-color', '#D9E1F2'), ('font-weight', 'bold')]},
+        {'selector': 'tr:nth-last-child(2)', 'props': [('background-color', '#D9E1F2'), ('font-weight', 'bold')]},
     ])
-    .apply(lambda x: ['background-color: #D9E1F2' if pd.notna(x['p-value']) and x['p-value'] < 0.05
-                       else '' for _ in x], axis=1)
     .hide(axis='index')
 )
 ```
