@@ -1,0 +1,348 @@
+---
+title: "Homework 5: Medicaid Expansion and Hospital Uncompensated Care"
+author: Valerie Hernandez
+course: ECON 470
+format:
+  pdf:
+    toc: false
+    number-sections: true
+    colorlinks: true
+    fontsize: 11pt
+    geometry: margin=1in
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+```{python}
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
+import statsmodels.formula.api as smf
+from linearmodels.panel import PanelOLS
+import warnings
+warnings.filterwarnings('ignore')
+
+hcris = pd.read_pickle('../../../data/output/hcris_merged.pkl')
+```
+# Part 1: Summarize the Data
+## Question 1
+
+**Provide a table of mean hospital uncompensated care (in millions of dollars) 
+by year, from 2011 through 2018. How has uncompensated care changed over time?**
+
+Uncompensated care rose slightly from 2011 to 2013, then declined after the 2014 
+Medicaid expansion before rising again in 2016 and gradually declining through 2018. 
+The post-2014 dip reflects the coverage gains from expansion, while the overall 
+pattern masks important differences between expanding and non-expanding states.
+```{python}
+q1_table = (
+    hcris
+    .groupby('year', as_index=False)
+    .agg(
+        mean_uncomp_care=('uncomp_care_m', 'mean'),
+        num_hospitals=('provider_number', 'nunique')
+    )
+    .rename(columns={
+        'year': 'Year',
+        'mean_uncomp_care': 'Mean Uncompensated Care ($M)',
+        'num_hospitals': 'Number of Hospitals'
+    })
+)
+
+(q1_table.style
+    .format({
+        'Mean Uncompensated Care ($M)': '${:.2f}M',
+        'Number of Hospitals': '{:,}'
+    })
+    .set_caption('Table 1: Mean Hospital Uncompensated Care by Year (2011-2018)')
+    .set_table_styles([
+        {'selector': 'caption', 'props': [('font-size', '14px'), ('font-weight', 'bold')]},
+        {'selector': 'th', 'props': [('background-color', '#4472C4'), ('color', 'white'), ('font-weight', 'bold')]},
+        {'selector': 'tr:nth-child(even)', 'props': [('background-color', '#D9E1F2')]},
+    ])
+    .hide(axis='index')
+)
+```
+## Question 2
+**Plot mean uncompensated care over time separately for states that expanded 
+Medicaid in 2014 versus states that never expanded. Does the graph suggest a 
+potential treatment effect?**
+
+The graph suggests a clear treatment effect. Prior to 2014 both groups were trending 
+similarly, but after expansion the 2014 expanders saw a sharp decline in uncompensated 
+care while never-expanders continued to rise. This is consistent with 
+Medicaid expansion reducing the volume of uninsured patients hospitals treat without 
+payment.
+
+![Figure 1: Mean Hospital Uncompensated Care Over Time](../../../data/output/figure1_uc_trends.png){width=90%}
+
+## Question 3
+
+**Using 2012 and 2015 as your pre and post periods, present a 2x2 DD table of 
+mean uncompensated care for expansion versus non-expansion states.**
+```{python}
+q3_dat = hcris[
+    ((hcris['expand_year'] == 2014) | (hcris['expand_ever'] == False)) &
+    (hcris['year'].isin([2012, 2015]))
+].copy()
+
+q3_dat['period'] = q3_dat['year'].map({2012: 'Pre (2012)', 2015: 'Post (2015)'})
+q3_dat['group'] = q3_dat['expand_ever'].map({True: 'Expanded (2014)', False: 'Never Expanded'})
+
+q3_means = (
+    q3_dat
+    .groupby(['group', 'period'], as_index=False)
+    .agg(mean_uc=('uncomp_care_m', 'mean'))
+    .pivot(index='group', columns='period', values='mean_uc')
+    .reset_index()
+)
+
+q3_means['Difference (Post - Pre)'] = q3_means['Post (2015)'] - q3_means['Pre (2012)']
+
+dd_val = (
+    q3_means.loc[q3_means['group'] == 'Expanded (2014)', 'Difference (Post - Pre)'].values[0] -
+    q3_means.loc[q3_means['group'] == 'Never Expanded', 'Difference (Post - Pre)'].values[0]
+)
+dd_row = pd.DataFrame([{
+    'group': 'DD Estimate',
+    'Pre (2012)': None,
+    'Post (2015)': None,
+    'Difference (Post - Pre)': dd_val
+}])
+q3_table = pd.concat([q3_means, dd_row], ignore_index=True)
+q3_table = q3_table.rename(columns={'group': 'Group'})
+
+(q3_table.style
+    .format({
+        'Pre (2012)': lambda x: f'${x:.2f}M' if pd.notna(x) else '',
+        'Post (2015)': lambda x: f'${x:.2f}M' if pd.notna(x) else '',
+        'Difference (Post - Pre)': lambda x: f'${x:.2f}M' if pd.notna(x) else ''
+    })
+    .set_caption('Table 2: 2x2 Difference-in-Differences Table of Mean Uncompensated Care')
+    .set_table_styles([
+        {'selector': 'caption', 'props': [('font-size', '14px'), ('font-weight', 'bold')]},
+        {'selector': 'th', 'props': [('background-color', '#4472C4'), ('color', 'white'), ('font-weight', 'bold')]},
+        {'selector': 'tr:last-child', 'props': [('font-weight', 'bold'), ('background-color', '#D9E1F2')]},
+    ])
+    .hide(axis='index')
+)
+```
+
+## Question 4
+
+**Briefly discuss what policies or events might explain the trends you observe. 
+Why might we expect Medicaid expansion to affect uncompensated care?**
+Uncompensated care declined for both expanding and non-expanding states over the 2011–2018 period, but the decline was notably sharper for states that expanded Medicaid in 2014, which suggests there are potential treatment effect. This pattern is consistent with the economic logic of Medicaid expansion which is that prior to expansion, low-income uninsured patients who received hospital care generated uncompensated costs that hospitals could not recover. However, by extending Medicaid coverage to adults up to 138% of the federal poverty level, expansion converted many previously uninsured patients into Medicaid-covered patients. This directly reduced the volume of care hospitals had to absorb without payment. The downward trend observed even in non-expanding states is likely explained by the ACA's individual mandate, also implemented in 2014 as well as the broader economic recovery following the 2008 recession, both of which reduced uninsured rates nationally regardless of expansion status.
+
+# Part 2: Estimate ATEs
+## Question 5
+
+**Estimate the effect of Medicaid expansion on hospital uncompensated care using 
+a standard DD regression estimator, focusing only on states that expanded in 2014 
+versus those that never expanded.**
+```{python}
+reg_dat = hcris[
+    (hcris['expand_year'] == 2014) | (hcris['expand_ever'] == False)
+].copy()
+
+# Do NOT dropna here - let statsmodels handle missing values automatically
+reg_dat['post'] = (reg_dat['year'] >= 2014).astype(int)
+reg_dat['treat'] = (reg_dat['expand_ever'].astype(bool) & reg_dat['post'].astype(bool)).astype(int)
+reg_dat['expand_ever'] = reg_dat['expand_ever'].astype(int)
+
+dd_reg = smf.ols(
+    'uncomp_care_m ~ post + expand_ever + treat',
+    data=reg_dat
+).fit()
+
+dd_results = pd.DataFrame({
+    'Coefficient': dd_reg.params,
+    'Std Error': dd_reg.bse,
+    't-stat': dd_reg.tvalues,
+    'p-value': dd_reg.pvalues,
+    '95% CI Lower': dd_reg.conf_int()[0],
+    '95% CI Upper': dd_reg.conf_int()[1]
+}).reset_index().rename(columns={'index': 'Variable'})
+
+stats_rows = pd.DataFrame([
+    {'Variable': 'Observations', 'Coefficient': int(dd_reg.nobs),
+     'Std Error': None, 't-stat': None, 'p-value': None,
+     '95% CI Lower': None, '95% CI Upper': None},
+    {'Variable': 'R-squared', 'Coefficient': round(dd_reg.rsquared, 4),
+     'Std Error': None, 't-stat': None, 'p-value': None,
+     '95% CI Lower': None, '95% CI Upper': None}
+])
+dd_results = pd.concat([dd_results, stats_rows], ignore_index=True)
+
+(dd_results.style
+    .format({
+        'Coefficient': lambda x: f'{int(x):,}' if isinstance(x, float) and x > 100
+                        else (f'{x:.4f}' if pd.notna(x) else ''),
+        'Std Error': lambda x: f'{x:.4f}' if pd.notna(x) else '',
+        't-stat': lambda x: f'{x:.3f}' if pd.notna(x) else '',
+        'p-value': lambda x: f'{x:.4f}' if pd.notna(x) else '',
+        '95% CI Lower': lambda x: f'{x:.4f}' if pd.notna(x) else '',
+        '95% CI Upper': lambda x: f'{x:.4f}' if pd.notna(x) else ''
+    })
+    .set_caption('Table 3: Standard DD Regression — 2014 Expanders vs Never-Expanders')
+    .set_table_styles([
+        {'selector': 'caption', 'props': [('font-size', '14px'), ('font-weight', 'bold')]},
+        {'selector': 'th', 'props': [('background-color', '#4472C4'), ('color', 'white'), ('font-weight', 'bold')]},
+        {'selector': 'tr:last-child', 'props': [('background-color', '#D9E1F2'), ('font-weight', 'bold')]},
+        {'selector': 'tr:nth-last-child(2)', 'props': [('background-color', '#D9E1F2'), ('font-weight', 'bold')]},
+    ])
+    .apply(lambda x: ['background-color: #fff2cc' if pd.notna(x['p-value']) and x['p-value'] < 0.05
+                       else '' for _ in x], axis=1)
+    .hide(axis='index')
+)
+```
+## Question 6
+
+**Include hospital and year fixed effects in your estimates. Cluster your standard 
+errors at the state level. How do your results compare to those in question 5?**
+
+The TWFE estimate is slightly larger in magnitude than the standard DD estimate from question 5. Adding hospital and year fixed effects absorbs 
+time-invariant hospital characteristics and common year trends, producing a cleaner estimate of the treatment effect.
+```{python}
+reg_dat_fe = reg_dat.dropna(subset=['uncomp_care_m']).copy()
+reg_dat_fe['provider_number'] = reg_dat_fe['provider_number'].astype(str)
+
+panel = reg_dat_fe.set_index(['provider_number', 'year'])
+y = panel['uncomp_care_m']
+X = panel[['treat']]
+
+twfe = PanelOLS(y, X, entity_effects=True, time_effects=True)
+twfe_res = twfe.fit(
+    cov_type='clustered',
+    cluster_entity=False,
+    cluster_time=False,
+    clusters=reg_dat_fe.set_index(['provider_number', 'year'])['state']
+)
+
+# Side-by-side comparison table
+combined_table = pd.DataFrame({
+    'Specification': ['Standard DD', 'TWFE'],
+    'Treat Coefficient': [
+        dd_reg.params.get('treat', np.nan),
+        twfe_res.params['treat']
+    ],
+    'Std Error': [
+        dd_reg.bse.get('treat', np.nan),
+        twfe_res.std_errors['treat']
+    ],
+    'p-value': [
+        dd_reg.pvalues.get('treat', np.nan),
+        twfe_res.pvalues['treat']
+    ],
+    'R-squared': [
+        round(dd_reg.rsquared, 3),
+        round(twfe_res.rsquared_within, 3)
+    ],
+    'Observations': [
+        int(dd_reg.nobs),
+        int(twfe_res.nobs)
+    ],
+    'Hospital FE': ['No', 'Yes'],
+    'Year FE': ['No', 'Yes']
+})
+
+(combined_table.style
+    .format({
+        'Treat Coefficient': '{:.4f}',
+        'Std Error': '{:.4f}',
+        'p-value': '{:.4f}',
+        'R-squared': '{:.3f}',
+        'Observations': '{:,}'
+    })
+    .set_caption('Table 4: Standard DD vs TWFE — Hospital & Year Fixed Effects, State-Clustered SEs')
+    .set_table_styles([
+        {'selector': 'caption', 'props': [('font-size', '14px'), ('font-weight', 'bold')]},
+        {'selector': 'th', 'props': [('background-color', '#4472C4'), ('color', 'white'), ('font-weight', 'bold')]},
+        {'selector': 'tr:nth-child(even)', 'props': [('background-color', '#D9E1F2')]},
+    ])
+    .hide(axis='index')
+)
+```
+## Question 7
+
+**Repeat the analysis in question 6 but include all states. Are your results 
+different? If so, why?**
+
+Including all states produces a smaller estimate of -$23M compared to -$29.6M in 
+question 6. This attenuation is expected — states that expanded after 2014 are 
+partially treated during the post period, which contaminates the control group and 
+pulls the estimate toward zero.
+```{python}
+reg_dat_all = hcris[~hcris['expand_ever'].isna()].copy()
+reg_dat_all['post'] = (reg_dat_all['year'] >= 2014).astype(int)
+reg_dat_all['expand_ever'] = reg_dat_all['expand_ever'].astype(bool)
+reg_dat_all['treat'] = (
+    reg_dat_all['expand_ever'] &
+    (reg_dat_all['year'] >= reg_dat_all['expand_year'].fillna(9999))
+).astype(int)
+reg_dat_all = reg_dat_all.dropna(subset=['uncomp_care_m']).copy()
+reg_dat_all['provider_number'] = reg_dat_all['provider_number'].astype(str)
+
+panel_all = reg_dat_all.set_index(['provider_number', 'year'])
+y_all = panel_all['uncomp_care_m']
+X_all = panel_all[['treat']]
+
+twfe_all = PanelOLS(y_all, X_all, entity_effects=True, time_effects=True)
+twfe_all_res = twfe_all.fit(
+    cov_type='clustered',
+    cluster_entity=False,
+    cluster_time=False,
+    clusters=reg_dat_all.set_index(['provider_number', 'year'])['state']
+)
+
+twfe_all_table = pd.DataFrame({
+    'Coefficient': twfe_all_res.params,
+    'Std Error': twfe_all_res.std_errors,
+    't-stat': twfe_all_res.tstats,
+    'p-value': twfe_all_res.pvalues,
+    '95% CI Lower': twfe_all_res.conf_int()['lower'],
+    '95% CI Upper': twfe_all_res.conf_int()['upper']
+}).reset_index().rename(columns={'index': 'Variable'})
+
+(twfe_all_table.style
+    .format({
+        'Coefficient': '{:.4f}',
+        'Std Error': '{:.4f}',
+        't-stat': '{:.3f}',
+        'p-value': '{:.4f}',
+        '95% CI Lower': '{:.4f}',
+        '95% CI Upper': '{:.4f}'
+    })
+    .set_caption('Table 5: TWFE DD — All States, Hospital & Year Fixed Effects, State-Clustered SEs')
+    .set_table_styles([
+        {'selector': 'caption', 'props': [('font-size', '14px'), ('font-weight', 'bold')]},
+        {'selector': 'th', 'props': [('background-color', '#4472C4'), ('color', 'white'), ('font-weight', 'bold')]},
+    ])
+    .apply(lambda x: ['background-color: #D9E1F2' if pd.notna(x['p-value']) and x['p-value'] < 0.05
+                       else '' for _ in x], axis=1)
+    .hide(axis='index')
+)
+```
+## Question 8
+
+**Provide an event study graph showing the effects of Medicaid expansion in each 
+year, limited to states that expanded in 2014 or never expanded (with 2013 as the 
+reference year).**
+
+![Figure 2: Event Study — 2014 Expanders vs Never-Expanders](../../../data/output/figure2_event_study_2014.png){width=90%}
+
+## Question 9
+
+**Repeat part 8 but include all states that expanded after 2014, constructing an 
+event time variable with binned endpoints.**
+
+![Figure 3: Event Study — All States, Binned Event Time](../../../data/output/figure3_event_study_all.png){width=90%}
+
+## Question 10
+
+**
+Summarize your findings from questions 5-9. What is the effect of Medicaid expansion on hospital uncompensated care? Do the event study graphs suggest any concerns about the parallel trends assumption? Briefly discuss one limitation of the standard TWFE estimator in the context of staggered Medicaid expansion.**
+
+The DD estimates consistently show that Medicaid expansion significantly reduced hospital uncompensated care. The standard DD estimate in question 5 shows a reduction of about $26M, while the TWFE estimate in question 6 grows slightly to $29.6M once hospital and year fixed effects are added. When all states are included in question 7, the estimate falls to $23M. In addition to this, the event study in question 8 supports the idea that expanding and non-expanding states were on similar trajectories before 2014 since the 2012 and 2013 pre-expansion coefficients are close to zero and statistically insignificant. In regard to a potential limitation with the TWFE is that the standard estimator can be problematic under staggered treatment timing because it uses already-treated states as controls for newly treated ones. Meaning the results can be a bit misleading.
